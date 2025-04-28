@@ -26,9 +26,9 @@ with st.sidebar:
         value=(
             "You are a Mermaid diagram expert. "
             "Turn the user's description into a reflective, detailed end-to-end workflow. "
-            "Include all relevant nodes, conditional branches, notes or subgraphs you deem necessary. "
+            "Include all nodes, conditional branches, notes, subgraphs, classDefs—whatever makes it clear. "
             "Use underscores in multi-word IDs (no spaces). "
-            "Return ONLY valid Mermaid code body—no markdown fences, no extra commentary outside the diagram."
+            "Return ONLY valid Mermaid code body—no markdown fences or extra commentary."
         ),
         height=140
     )
@@ -47,8 +47,8 @@ def prompt_to_mermaid(desc: str, sys_msg: str, temp: float) -> str:
     resp = openai.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": sys_msg},
-            {"role": "user",   "content": desc}
+            {"role": "system",  "content": sys_msg},
+            {"role": "user",    "content": desc}
         ],
         temperature=temp,
     )
@@ -56,22 +56,43 @@ def prompt_to_mermaid(desc: str, sys_msg: str, temp: float) -> str:
 
 # ── Sanitization -----------------------------------------------------------
 def clean_mermaid_body(raw: str) -> str:
-    # 1) Strip triple-backtick fences (```mermaid or ```), case-insensitive
+    # 1) Remove any triple-backtick fences
     cleaned = re.sub(r"```(?:mermaid)?", "", raw, flags=re.IGNORECASE)
-    # 2) Remove any existing 'graph <dir>' lines so we can re-inject ours
-    cleaned = re.sub(r"(?mi)^graph\s+\w+.*$", "", cleaned)
-    # 3) Trim and drop blank lines but keep everything else
+
+    # 2) Drop any pre-existing 'graph' or 'flowchart' lines
+    cleaned = re.sub(r"(?mi)^ *(graph|flowchart)\s+\w+.*$", "", cleaned)
+
+    # 3) Split, strip trailing whitespace, drop blank lines
     lines = [ln.rstrip() for ln in cleaned.splitlines() if ln.strip()]
-    return "\n".join(lines)
+
+    # 4) Whitelist only valid Mermaid constructs
+    kept = []
+    for ln in lines:
+        if re.match(r"^%%\{.*\}%%$", ln):                # directive
+            kept.append(ln)
+        elif re.match(r"^subgraph\s+\w+", ln):            # subgraph start
+            kept.append(ln)
+        elif re.match(r"^end$", ln, flags=re.IGNORECASE): # subgraph end
+            kept.append(ln)
+        elif re.match(r"^classDef\s+\w+", ln):            # class definitions
+            kept.append(ln)
+        elif re.match(r"^note\s+(left|right|top|bottom)\s+of\s+\w+", ln):  # notes
+            kept.append(ln)
+        elif re.search(r"--?>", ln):                      # any arrow (--> or ->)
+            kept.append(ln)
+        elif re.search(r"\[.*\]", ln):                    # standalone node defs
+            kept.append(ln)
+        # else: drop everything else (prose, bullets, etc.)
+    return "\n".join(kept)
 
 # ── Generate & render ───────────────────────────────────────────────────────
 if generate:
     if not os.getenv("OPENAI_API_KEY"):
         st.error("Set OPENAI_API_KEY in Streamlit secrets.")
     else:
-        with st.spinner("Generating detailed diagram…"):
-            raw = prompt_to_mermaid(workflow_desc, system_prompt, temperature)
-            body = clean_mermaid_body(raw)
+        with st.spinner("🧠 Generating detailed diagram…"):
+            raw_output = prompt_to_mermaid(workflow_desc, system_prompt, temperature)
+            body        = clean_mermaid_body(raw_output)
 
         mermaid_code = (
             f"%%{{init:{{'theme':'{theme}'}}}}%%\n"
