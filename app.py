@@ -6,7 +6,7 @@ import streamlit_mermaid as stmd
 
 # ── Page config ─────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Mermaid-from-Prompt", layout="wide")
-st.title("🖍️ Prompt → Mermaid Diagram")
+st.title("🖍️ Prompt → Detailed Mermaid Diagram")
 
 # ── Sidebar UI for prompt customization ─────────────────────────────────────
 with st.sidebar:
@@ -25,18 +25,19 @@ with st.sidebar:
         "System prompt",
         value=(
             "You are a Mermaid diagram expert. "
-            "Turn the user's description into Mermaid nodes & edges. "
-            "Use underscores (no spaces) in IDs. "
-            "Return ONLY lines like `A_Node-->B_Node`, NO `graph` or fences."
+            "Turn the user's description into a reflective, detailed end-to-end workflow. "
+            "Include all relevant nodes, conditional branches, notes or subgraphs you deem necessary. "
+            "Use underscores in multi-word IDs (no spaces). "
+            "Return ONLY valid Mermaid code body—no markdown fences, no extra commentary outside the diagram."
         ),
-        height=120
+        height=140
     )
 
 # ── Main input ───────────────────────────────────────────────────────────────
 workflow_desc = st.text_area(
-    "📝 Describe your workflow",
-    placeholder="e.g. CSV → ETL → Data warehouse → Dashboard…",
-    height=180,
+    "📝 Describe your workflow in detail",
+    placeholder="e.g. ‘A deals team sources mandate → … → post-deal integration and reporting.’",
+    height=200,
 )
 generate = st.button("Generate diagram", disabled=not workflow_desc.strip())
 
@@ -55,24 +56,20 @@ def prompt_to_mermaid(desc: str, sys_msg: str, temp: float) -> str:
 
 # ── Sanitization -----------------------------------------------------------
 def clean_mermaid_body(raw: str) -> str:
-    # 1) strip fences and any pre-existing graph lines
+    # 1) Strip triple-backtick fences (```mermaid or ```), case-insensitive
     cleaned = re.sub(r"```(?:mermaid)?", "", raw, flags=re.IGNORECASE)
+    # 2) Remove any existing 'graph <dir>' lines so we can re-inject ours
     cleaned = re.sub(r"(?mi)^graph\s+\w+.*$", "", cleaned)
-    # 2) split, strip whitespace, drop blank lines
-    lines = [ln.strip() for ln in cleaned.splitlines() if ln.strip()]
-    # 3) keep only true Mermaid edge/node definitions (must contain --> or ---)
-    body_lines = [
-        ln for ln in lines
-        if re.search(r"--?>", ln)
-    ]
-    return "\n".join(body_lines)
+    # 3) Trim and drop blank lines but keep everything else
+    lines = [ln.rstrip() for ln in cleaned.splitlines() if ln.strip()]
+    return "\n".join(lines)
 
 # ── Generate & render ───────────────────────────────────────────────────────
 if generate:
     if not os.getenv("OPENAI_API_KEY"):
         st.error("Set OPENAI_API_KEY in Streamlit secrets.")
     else:
-        with st.spinner("Generating…"):
+        with st.spinner("Generating detailed diagram…"):
             raw = prompt_to_mermaid(workflow_desc, system_prompt, temperature)
             body = clean_mermaid_body(raw)
 
