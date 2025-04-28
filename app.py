@@ -1,146 +1,107 @@
-import os, subprocess, tempfile, difflib
+import os
+import re
 import streamlit as st
 import openai
 import streamlit_mermaid as stmd
-import streamlit.components.v1 as components
 
-# ── Config & state ──────────────────────────────────────────────────────────
-st.set_page_config(page_title="Mermaid-Workflow Pro", layout="wide")
-if "last_ai" not in st.session_state:
-    st.session_state.last_ai = ""
-if "last_edit" not in st.session_state:
-    st.session_state.last_edit = ""
+# ── Page config ─────────────────────────────────────────────────────────────
+st.set_page_config(page_title="Mermaid-from-Prompt", layout="wide")
+st.title("🖍️ Prompt → Detailed Mermaid Diagram")
 
-# ── Sidebar: settings & templates ────────────────────────────────────────────
+# ── Sidebar UI for prompt customization ─────────────────────────────────────
 with st.sidebar:
-    st.header("⚙️ Settings & Templates")
-
-    # Live preview toggle
-    live = st.checkbox("🔄 Live preview", value=False)
-
-    orientation = st.selectbox("Direction", ["TB","LR","TD","RL"], index=0)
-    theme       = st.selectbox("Theme", ["default","forest","dark"], index=0)
-    temp        = st.slider("Temperature", 0.0, 1.0, 0.3, 0.05)
-
-    # Templates & Quick-start
-    st.markdown("#### 🚀 Quick-start prompts")
-    templates = {
-        "DevOps Pipeline": "A CI system detects a Git push → builds artifacts → runs tests → deploys to prod → alerts team.",
-        "SaaS Onboarding": "User signs up → onboarding email → tutorial walkthrough → completes first action → feedback survey.",
-        "Investment Close": "Client meets team → initial pitch → term negotiation → LOI → due diligence → signing → post-deal integration."
-    }
-    choice = st.selectbox("Pick a template", [""] + list(templates.keys()), index=0)
-    if choice:
-        st.session_state.workflow_desc = templates[choice]
-
-    st.markdown("***")
-
-    # System prompt
+    st.header("⚙️ Settings")
+    orientation = st.selectbox(
+        "Diagram direction", ["TB", "LR", "TD", "RL"], index=0,
+        help="TB = top→bottom"
+    )
+    theme = st.selectbox(
+        "Mermaid theme", ["default", "forest", "dark"], index=0
+    )
+    temperature = st.slider(
+        "OpenAI temperature", 0.0, 1.0, 0.3, step=0.05
+    )
     system_prompt = st.text_area(
         "System prompt",
         value=(
             "You are a Mermaid diagram expert. "
             "Turn the user's description into a reflective, detailed end-to-end workflow. "
-            "Include nodes, branches, notes, subgraphs, classDefs—whatever clarifies the process. "
-            "Use underscores (no spaces) in IDs. "
-            "Return only valid Mermaid code body—no fences or commentary."
+            "Include all nodes, conditional branches, notes, subgraphs, classDefs—whatever makes it clear. "
+            "Use underscores in multi-word IDs (no spaces). "
+            "Return ONLY valid Mermaid code body—no markdown fences or extra commentary."
         ),
-        height=140,
+        height=140
     )
 
-# ── Main layout ──────────────────────────────────────────────────────────────
-col1, col2 = st.columns([1,1])
+# ── Main input ───────────────────────────────────────────────────────────────
+workflow_desc = st.text_area(
+    "📝 Describe your workflow in detail",
+    placeholder="e.g. ‘A deals team sources mandate → … → post-deal integration and reporting.’",
+    height=200,
+)
+generate = st.button("Generate diagram", disabled=not workflow_desc.strip())
 
-with col1:
-    st.subheader("📝 Describe your workflow")
-    workflow_desc = st.text_area(
-        "“Enter any process…”",
-        key="workflow_desc",
-        height=200,
-        value=st.session_state.get("workflow_desc","")
+# ── OpenAI call ------------------------------------------------------------
+def prompt_to_mermaid(desc: str, sys_msg: str, temp: float) -> str:
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+    resp = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system",  "content": sys_msg},
+            {"role": "user",    "content": desc}
+        ],
+        temperature=temp,
     )
+    return resp.choices[0].message.content
 
-    # Generate logic
-    def do_generate():
-        openai.api_key = os.getenv("OPENAI_API_KEY")
-        resp = openai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role":"system","content":system_prompt},
-                {"role":"user","content":workflow_desc}
-            ],
-            temperature=temp,
-        )
-        st.session_state.last_ai = resp.choices[0].message.content
-        st.session_state.last_edit = st.session_state.last_ai  # seed editor
+# ── Sanitization -----------------------------------------------------------
+def clean_mermaid_body(raw: str) -> str:
+    # 1) Remove any triple-backtick fences
+    cleaned = re.sub(r"```(?:mermaid)?", "", raw, flags=re.IGNORECASE)
 
-    if live:
-        st.experimental_memo.clear()  # clear cache so new run
-        do_generate()
+    # 2) Drop any pre-existing 'graph' or 'flowchart' lines
+    cleaned = re.sub(r"(?mi)^ *(graph|flowchart)\s+\w+.*$", "", cleaned)
+
+    # 3) Split, strip trailing whitespace, drop blank lines
+    lines = [ln.rstrip() for ln in cleaned.splitlines() if ln.strip()]
+
+    # 4) Whitelist only valid Mermaid constructs
+    kept = []
+    for ln in lines:
+        if re.match(r"^%%\{.*\}%%$", ln):                # directive
+            kept.append(ln)
+        elif re.match(r"^subgraph\s+\w+", ln):            # subgraph start
+            kept.append(ln)
+        elif re.match(r"^end$", ln, flags=re.IGNORECASE): # subgraph end
+            kept.append(ln)
+        elif re.match(r"^classDef\s+\w+", ln):            # class definitions
+            kept.append(ln)
+        elif re.match(r"^note\s+(left|right|top|bottom)\s+of\s+\w+", ln):  # notes
+            kept.append(ln)
+        elif re.search(r"--?>", ln):                      # any arrow (--> or ->)
+            kept.append(ln)
+        elif re.search(r"\[.*\]", ln):                    # standalone node defs
+            kept.append(ln)
+        # else: drop everything else (prose, bullets, etc.)
+    return "\n".join(kept)
+
+# ── Generate & render ───────────────────────────────────────────────────────
+if generate:
+    if not os.getenv("OPENAI_API_KEY"):
+        st.error("Set OPENAI_API_KEY in Streamlit secrets.")
     else:
-        if st.button("Generate diagram"):
-            do_generate()
+        with st.spinner("🧠 Generating detailed diagram…"):
+            raw_output = prompt_to_mermaid(workflow_desc, system_prompt, temperature)
+            body        = clean_mermaid_body(raw_output)
 
-    # Editable source + diff
-    if st.session_state.last_ai:
-        st.markdown("#### ✍️ Edit Mermaid source")
-        edited = st.text_area(
-            "You can tweak the diagram code below:",
-            key="edited",
-            height=200,
-            value=st.session_state.last_edit
-        )
-        st.session_state.last_edit = edited
-
-        # Show diff
-        if edited != st.session_state.last_ai:
-            diff_html = difflib.HtmlDiff().make_table(
-                st.session_state.last_ai.splitlines(),
-                edited.splitlines(),
-                context=True, numlines=1
-            )
-            st.markdown("#### 🔍 Changes vs AI output")
-            components.html(diff_html, height=200, scrolling=True)
-
-with col2:
-    st.subheader("📊 Diagram preview")
-    if st.session_state.last_edit:
         mermaid_code = (
             f"%%{{init:{{'theme':'{theme}'}}}}%%\n"
             f"graph {orientation}\n"
-            f"{st.session_state.last_edit}"
+            f"{body}"
         )
-        stmd.st_mermaid(mermaid_code)
 
-        # ── Export buttons ────────────────────────────────────────────────
-        st.markdown("#### 📥 Export & Embed")
-        # 1) Copy raw code
+        st.subheader("Mermaid source")
         st.code(mermaid_code, language="mermaid")
-        st.button("Copy code to clipboard", on_click=components.html,
-                  args=(f"<script>navigator.clipboard.writeText(`{mermaid_code}`);</script>",),)
 
-        # 2) Download SVG via mermaid-cli (must have mmdc installed)
-        def export_svg(code: str):
-            with tempfile.NamedTemporaryFile("w", suffix=".mmd", delete=False) as f:
-                f.write(code); f.flush()
-                svg_path = f.name.replace(".mmd", ".svg")
-                subprocess.run(["mmdc","-i",f.name,"-o",svg_path], check=True)
-            return open(svg_path, "rb").read()
-
-        try:
-            svg = export_svg(mermaid_code)
-            st.download_button("⬇️ SVG", svg, "diagram.svg", mime="image/svg+xml")
-            # similarly PNG
-            # png = export_png(mermaid_code)
-            # st.download_button("⬇️ PNG", png, "diagram.png", mime="image/png")
-        except Exception:
-            st.info("Install `mmdc` CLI in your env to enable SVG exports.")
-
-        # 3) Embed snippet
-        embed_snippet = (
-            f'<div class="mermaid">\n{mermaid_code}\n</div>\n'
-            '<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>\n'
-            '<script>mermaid.initialize({startOnLoad:true});</script>'
-        )
-        st.text_area("Copy HTML embed", value=embed_snippet, height=150)
-
+        st.subheader("Diagram preview")
+        stmd.st_mermaid(mermaid_code)
