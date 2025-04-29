@@ -6,7 +6,7 @@ import streamlit_mermaid as stmd
 
 # ── Page config ─────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Mermaid-from-Prompt", layout="wide")
-st.title("🖍️ Prompt → Detailed Mermaid Diagram")
+st.title("🖍️ Floww-maid; Generate Detailed Mermaid Diagrams")
 
 # ── Sidebar UI for prompt customization ─────────────────────────────────────
 with st.sidebar:
