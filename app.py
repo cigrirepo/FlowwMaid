@@ -16,7 +16,7 @@ with st.sidebar:
         help="TB = Top→Bottom"
     )
     theme = st.selectbox(
-        "Mermaid Diagram Theme", ["default", "forest", "dark"], index=0
+        "Mermaid Diagram Theme", ["Default", "Forest", "Dark"], index=0
     )
     temperature = st.slider(
         "Chart Complexity", 0.0, 1.0, 0.3, step=0.05
@@ -100,8 +100,8 @@ if generate:
             f"{body}"
         )
 
-        st.subheader("Mermaid source")
+        st.subheader("Mermaid Diagram Code")
         st.code(mermaid_code, language="mermaid")
 
-        st.subheader("Diagram preview")
+        st.subheader("Workflow Diagram")
         stmd.st_mermaid(mermaid_code)
