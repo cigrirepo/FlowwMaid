@@ -12,7 +12,7 @@ st.title("🖍️ Flowwmaid: Generate Detailed Mermaid Diagrams")
 with st.sidebar:
     st.header("⚙️ Settings")
     orientation = st.selectbox(
-        "Diagram Direction", ["Top-To-Bottom", "LeftR", "TD", "RL"], index=0,
+        "Diagram Direction", ["Top-To-Bottom", "Left-to-Right", "Right-to-Left"], index=0,
         help="Choose the formatting of your chart."
     )
     theme = st.selectbox(
