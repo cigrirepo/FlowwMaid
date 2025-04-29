@@ -12,17 +12,17 @@ st.title("🖍️ Prompt → Detailed Mermaid Diagram")
 with st.sidebar:
     st.header("⚙️ Settings")
     orientation = st.selectbox(
-        "Diagram direction", ["TB", "LR", "TD", "RL"], index=0,
-        help="TB = top→bottom"
+        "Diagram Direction", ["TB", "LR", "TD", "RL"], index=0,
+        help="TB = Top→Bottom"
     )
     theme = st.selectbox(
-        "Mermaid theme", ["default", "forest", "dark"], index=0
+        "Mermaid Diagram Theme", ["default", "forest", "dark"], index=0
     )
     temperature = st.slider(
-        "OpenAI temperature", 0.0, 1.0, 0.3, step=0.05
+        "Chart Complexity", 0.0, 1.0, 0.3, step=0.05
     )
     system_prompt = st.text_area(
-        "System prompt",
+        "System Prompt",
         value=(
             "You are a Mermaid diagram expert. "
             "Turn the user's description into a reflective, detailed end-to-end workflow. "
