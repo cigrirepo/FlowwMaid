@@ -78,11 +78,10 @@ def clean_mermaid_body(raw: str) -> str:
             kept.append(ln)
         elif re.match(r"^note\s+(left|right|top|bottom)\s+of\s+\w+", ln):  # notes
             kept.append(ln)
-        elif re.search(r"--?>", ln):                      # any arrow (--> or ->)
+        elif re.search(r"--?>", ln):                      # any arrow
             kept.append(ln)
-        elif re.search(r"\[.*\]", ln):                    # standalone node defs
+        elif re.search(r"\[.*\]", ln):                    # node defs
             kept.append(ln)
-        # else: drop everything else (prose, bullets, etc.)
     return "\n".join(kept)
 
 # ── Generate & render ───────────────────────────────────────────────────────
@@ -94,9 +93,14 @@ if generate:
             raw_output = prompt_to_mermaid(workflow_desc, system_prompt, temperature)
             body        = clean_mermaid_body(raw_output)
 
+        # Normalize orientation and theme to lowercase hyphenated form
+        dir_form   = orientation.lower()
+        theme_form = theme.lower()
+
+        # Build final Mermaid code
         mermaid_code = (
-            f"%%{{init:{{'theme':'{theme}'}}}}%%\n"
-            f"graph {orientation}\n"
+            f"%%{{init:{{'theme':'{theme_form}'}}}}%%\n"
+            f"graph {dir_form}\n"
             f"{body}"
         )
 
