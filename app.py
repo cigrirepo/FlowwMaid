@@ -35,7 +35,7 @@ with st.sidebar:
 
 # ── Main input ───────────────────────────────────────────────────────────────
 workflow_desc = st.text_area(
-    "📝 Describe your workflow in detail",
+    "📝 Streamline your desired workflow:",
     placeholder="e.g. ‘A deals team sources mandate → … → post-deal integration and reporting.’",
     height=200,
 )
@@ -100,8 +100,8 @@ if generate:
             f"{body}"
         )
 
-        st.subheader("Mermaid source")
+        st.subheader("Workflow Diagram (Mermaid) Source")
         st.code(mermaid_code, language="mermaid")
 
-        st.subheader("Diagram preview")
+        st.subheader("Diagram Preview")
         stmd.st_mermaid(mermaid_code)
